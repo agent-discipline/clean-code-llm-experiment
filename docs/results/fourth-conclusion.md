@@ -72,7 +72,7 @@ R = 셀마다 (A 비용 중앙값 ÷ B 비용 중앙값)의 14셀 기하평균. 
 
 ## 4. 사후 관찰 (판정에 쓰지 않음 — 사전 등록 밖)
 
-1. **Haiku 실패 2건은 한 셀에 몰렸다.** 둘 다 D3 layered(rep 2·3)다. diff는 지연 기록만 고치고 알림 창은 그대로인 naive-1 형태다. 파일럿에서도 유효 실행 중 실패는 이 셀의 explore-haiku 1건뿐이고 같은 형태였다(`experiment/results-del-pilot`). 이 형태가 탐색 누락인지 문구 해석 차이인지는 결과만으로 가를 수 없다(`experiment/oracle/D3/design.md` DT-6). explorer 보고에 알림 창이 있었는지는 궤적으로 확인하지 않았다. 나머지 13셀은 Haiku도 3/3이다.
+1. **Haiku 실패 2건은 한 셀에 몰렸다.** 둘 다 D3 layered(rep 2·3)다. diff는 지연 기록만 고치고 알림 창은 그대로인 naive-1 형태다. 파일럿에서도 유효 실행 중 실패는 이 셀의 explore-haiku 1건뿐이고 같은 형태였다(`experiment/results-del-pilot`). 이 형태가 탐색 누락인지 문구 해석 차이인지는 결과만으로 구분할 수 없다(`experiment/oracle/D3/design.md` DT-6). explorer 보고에 알림 창이 있었는지는 궤적으로 확인하지 않았다. 나머지 13셀은 Haiku도 3/3이다.
 2. **Haiku·Sonnet 위임에서 메인의 Opus 비용은 줄었다(0.188 → 0.146·0.143, 약 −23%).** explore-opus는 워커도 Opus라 메인 몫을 나눌 수 없다. 늘어난 비용은 워커 몫이다. Haiku 워커는 실행당 $0.008로 작았고, Sonnet 워커는 $0.078로 메인 절감보다 컸다.
 3. **혼자 대비 비(사후 계산 — 같은 도구, 같은 시드):** sonnet ÷ solo R 1.252 [1.041, 1.342](42/42 대 42/42 — 셋째 행 문턱 1.25를 0.002 넘는 경계값), haiku ÷ solo R 0.845 [0.755, 0.935](40/42 대 42/42). 혼자보다 싼 위임은 Haiku뿐이다.
 4. **explorer 미호출 7/42(방식마다)는 작은 과제에 몰렸다.** S4가 방식마다 5/6이고, 나머지는 haiku S1 layered 2, sonnet·opus S1 layered 1·S2 layered 1이다. D는 위임 방식 54실행 모두 호출했다. 그래서 S4 셀 비(opus÷solo 1.07·0.85)는 대부분 위임하지 않은 실행끼리의 비교다 — "S4에서 위임 이득이 없다"는 뜻으로 읽을 수 없다.
