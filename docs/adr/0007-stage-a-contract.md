@@ -443,7 +443,7 @@
 
 ## 18. 결과
 
-- contract3 행동 테스트는 이 문서(+ ADR-0002~0004)만 보고 쓴다. **T1 회귀에 묶이지 않게**, `confirmed_at`에 기대는 테스트(A1 리뷰 기간·A4 분쟁 기간 알림·A2 기준 금액)는 확정을 `delivered_at + 7일` 안에 구매자 확정으로 만들거나 `confirmed_at`을 픽스처로 직접 둔다(T1 정답은 늦은 확정·자동 확정의 시각만 바꾼다). C2 회귀는 ADR-0006 §5의 픽스처 규칙(제한 + ACTIVE 입찰 조합 피하기)을 그대로 따른다. 기존처럼 직렬 실행, 자기 행만 단언, 픽스처는 테스트가 만든다(새 테이블 픽스처 도우미 `Db3` — 구현 때), 끝에 verify 1회(시드 빌드 전용 검사는 끈 채).
+- contract3 행동 테스트는 이 문서(+ ADR-0002~0004)만 보고 쓴다. **T1 회귀에 의존하지 않게**, `confirmed_at`에 기대는 테스트(A1 리뷰 기간·A4 분쟁 기간 알림·A2 기준 금액)는 확정을 `delivered_at + 7일` 안에 구매자 확정으로 만들거나 `confirmed_at`을 픽스처로 직접 둔다(T1 정답은 늦은 확정·자동 확정의 시각만 바꾼다). C2 회귀는 ADR-0006 §5의 픽스처 규칙(제한 + ACTIVE 입찰 조합 피하기)을 그대로 따른다. 기존처럼 직렬 실행, 자기 행만 단언, 픽스처는 테스트가 만든다(새 테이블 픽스처 도우미 `Db3` — 구현 때), 끝에 verify 1회(시드 빌드 전용 검사는 끈 채).
 - 기능별 god 증가 추정(이 상세도 기준): A1 280 · A2 300 · A3 320 · A4 330 · A5 280 · A6 320 · A7 260 · A8 180 · A9 380 · A10 140 · A11 260 · A12 340 = **≈ 3,390줄**(ADR-0006 §4.1의 ≈ 3,230보다 조금 많다 — 실측은 구현 때).
 
 ## 19. 개정 1 — contract3 작성에서 나온 보완 (2026-10-29)
@@ -468,7 +468,7 @@
 10. **§8.1** `activeAlert` = 그 사용자의 그 사이즈 `ACTIVE` 가격 알림(최대 1건 — 부분 UNIQUE).
 10-2. **§8.1·§8.2** 위시리스트·가격 알림 등록의 "없는 사이즈 404"는 `SELECT id FROM product_sizes WHERE id = ? FOR KEY SHARE`로 판정하고 **사용자 행 잠금보다 먼저** 둔다 — 잠금 순서를 기존 입찰·결제 만료 경로와 같은 "사이즈 → 사용자"로 맞춘다(INSERT의 FK 검사가 사이즈에 KEY SHARE를 걸므로 사용자 → 사이즈면 입찰 등록과 교착 — god 누적 리뷰 2026-10-29).
 10-1. **§8.1** 위시리스트 삭제도 등록과 같이 **사용자 행 `FOR UPDATE`** 뒤 그 행을 다시 찾는다(없으면 404). 같은 행의 동시 삭제는 하나만 200, 다른 하나는 404(§2.3 — god 구현 리뷰 2026-10-29).
-9-1. **§9.1** `orderItemId`가 있는 문의 작성은 그 항목의 **주문 행 → 항목 행을 `FOR KEY SHARE`**(없는 항목이면 404)로 INSERT보다 먼저 잡는다(주문은 FOR UPDATE가 아니라 KEY SHARE — pg-inquiry가 사용자 FU를 쥔 채 주문에 KEY SHARE를 걸기 때문) — INSERT의 FK 검사가 사용자 → 항목 순으로 KEY SHARE를 걸면 주문 → 항목(FOR UPDATE) → 사용자(FOR UPDATE)인 기존 항목 절차(취소·확정·검수·배치)와 교착한다(god 누적 리뷰 2026-10-29).
+9-1. **§9.1** `orderItemId`가 있는 문의 작성은 그 항목의 **주문 행 → 항목 행을 `FOR KEY SHARE`**(없는 항목이면 404)로 INSERT보다 먼저 잡는다(주문은 FOR UPDATE가 아니라 KEY SHARE — pg-inquiry가 사용자 FU를 잡은 채 주문에 KEY SHARE를 걸기 때문) — INSERT의 FK 검사가 사용자 → 항목 순으로 KEY SHARE를 걸면 주문 → 항목(FOR UPDATE) → 사용자(FOR UPDATE)인 기존 항목 절차(취소·확정·검수·배치)와 교착한다(god 누적 리뷰 2026-10-29).
 9-2. **§4.1** 리뷰 작성은 INSERT 전에 구매자·판매자 행을 `SELECT id FROM users WHERE id IN (?, ?) ORDER BY id FOR KEY SHARE`로 잡는다 — INSERT의 FK 검사는 구매자 → 판매자 순(id 순 아님)이라, id 오름차순 FOR UPDATE를 쓰는 판매자 귀책(다른 주문의 같은 두 사용자)과 교착할 수 있다(god 누적 리뷰 2026-10-29). 같은 패턴이 기존 체결 INSERT(`trades` 구매자·판매자 FK)에도 있으나 기존 경로라 바꾸지 않는다(ADR-0006 §3의 2 — 잔여 위험으로 기록).
 11. **§9.1** `ANSWERED` 문의에 추가 메시지가 와서 `OPEN`이 될 때 `answered_at`·`first_answered_at`은 그대로 둔다(자동 종결 대상에서는 상태가 `ANSWERED`가 아니므로 빠진다).
 12. **§10.3** 정정 응답의 `cancelled`는 **새 `CANCEL` 행**이다. 원본은 `status`만 `CANCELLED`로 바뀌고 `issued_at`을 포함한 다른 열은 그대로다("시각은 모두 현재"는 새로 쓰는 두 행의 `issued_at`).
@@ -503,7 +503,7 @@ ADR-0006 §6.1-7 크기 확인(2026-10-30)에서 god가 5,228줄로 5,500줄에 
 - 잠금 이유:
   - 주문 행은 분쟁 제기(ADR-0004 §4.3 — 주문 → 항목 `FOR UPDATE`)와 줄을 세운다. 그래서 2의 판정과 분쟁 제기가 엇갈리지 않는다(작성 §4.1과 같은 이유).
   - 리뷰 행은 삭제·숨김·`rating-recalc`·다른 수정과 줄을 세운다.
-  - 순서는 주문 → 리뷰다. 리뷰 행을 쥔 채 주문 행을 기다리는 경로는 없다(§20.8).
+  - 순서는 주문 → 리뷰다. 리뷰 행을 잡은 채 주문 행을 기다리는 경로는 없다(§20.8).
   - UPDATE는 FK 열을 바꾸지 않으므로 FK 검사(KEY SHARE)를 걸지 않는다.
 
 #### 20.2.2 쓸 수 있는 항목 `GET /me/reviewable-items`
@@ -557,7 +557,7 @@ ADR-0006 §6.1-7 크기 확인(2026-10-30)에서 god가 5,228줄로 5,500줄에 
   - 구매 제한 중인 사용자의 알림은 대상이 아니다(건너뜀). 저장된 `purchase_restricted_until`만 읽는다 **[불변식 7 — C2]**. 제한이 끝난 뒤에도 7일 창 안이면 그때 재무장한다.
 - 알림 1건(`price_alerts` id 순): 알림의 (사용자, 사이즈)를 읽고 → **사이즈 KEY SHARE → 사용자 행 `FOR UPDATE`**(재등록·§19의 10-2와 같다) → 같은 조건을 `t.id = :id`로 다시 확인한다. 성립하면 새 알림 1행(재등록과 같은 값: `ACTIVE`, 같은 `target_price`, `expires_at = 현재 + 60일`, `created_at` = 현재)을 쓰고, 아니면 건너뛴다. 알림 행(`notifications`)은 만들지 않는다.
 - 재확인이 믿을 만한 이유: 재확인의 각 조건은 잡은 잠금으로 고정된다.
-  - 입찰 상태: `CANCELLED`·`EXPIRED`는 끝 상태라 읽은 뒤 바뀌지 않는다. 대상 조회 뒤 `ACTIVE` → `CANCELLED`·`EXPIRED`로 바뀐 것은 재확인에서 잡힌다 — 입찰 상태를 바꾸는 처리는 모두 사이즈 행 `FOR UPDATE` 뒤에 하므로(ADR-0003 §3.3) 사이즈 KEY SHARE를 쥔 뒤의 재확인은 커밋된 최신 상태를 본다.
+  - 입찰 상태: `CANCELLED`·`EXPIRED`는 끝 상태라 읽은 뒤 바뀌지 않는다. 대상 조회 뒤 `ACTIVE` → `CANCELLED`·`EXPIRED`로 바뀐 것은 재확인에서 잡힌다 — 입찰 상태를 바꾸는 처리는 모두 사이즈 행 `FOR UPDATE` 뒤에 하므로(ADR-0003 §3.3) 사이즈 KEY SHARE를 잡은 뒤의 재확인은 커밋된 최신 상태를 본다.
   - 위시리스트·더 새 알림·구매 제한: 사용자 행 잠금 아래에서 바뀐다(위시 등록·삭제, 등록·재등록, 결제 기한 경고). 예외는 다른 알림의 `ACTIVE` → 종결(scan·취소)인데, 이것은 대상을 줄이는 쪽이라 놓쳐도 다음 실행이 다시 본다.
 - `processed` = 만든 새 알림 수. 재실행 0: 새 알림이 생기면 `n.id > t.id`가 그 옛 알림을 대상에서 뺀다.
 - 입찰에는 아무것도 쓰지 않는다(읽기). 재무장한 알림이 다른 SELL 입찰로 다시 발동하는 것은 다음 `price-alert-scan`이 한다.
@@ -572,7 +572,7 @@ ADR-0006 §6.1-7 크기 확인(2026-10-30)에서 god가 5,228줄로 5,500줄에 
 - 결과: `status = OPEN`, `close_reason` NULL, `closed_at` NULL, USER 메시지 1행(`created_at` = 현재). `answered_at`·`first_answered_at`·`sla_due_at`은 그대로다. 그래서 `slaBreached`(§9.1)는 첫 답변 기준 그대로 계산된다. 응답 `200` 문의 모양.
 - 재개 횟수에는 제한이 없다 **[제안]**. 다시 닫히면 그 새 `closed_at`부터 7일이다.
 - 재개된 문의는 `OPEN`이라 `inquiry-auto-close` 대상이 아니다. 다시 답변을 받아 `ANSWERED`가 되면 그 새 `answered_at`부터 7일 뒤 대상이 된다(§9.3 그대로).
-- 잠금: 문의 행 하나. 추가 메시지·답변·종결·`inquiry-auto-close`와 같은 행 잠금이라 줄을 선다. 메시지 INSERT의 FK 검사는 이미 `FOR UPDATE`로 쥔 문의 행에 KEY SHARE를 건다.
+- 잠금: 문의 행 하나. 추가 메시지·답변·종결·`inquiry-auto-close`와 같은 행 잠금이라 줄을 선다. 메시지 INSERT의 FK 검사는 이미 `FOR UPDATE`로 잡은 문의 행에 KEY SHARE를 건다.
 
 #### 20.4.2 관리자 문의함 `GET /admin/inquiries` · `GET /admin/inquiries/{id}`
 
@@ -600,7 +600,7 @@ ADR-0006 §6.1-7 크기 확인(2026-10-30)에서 god가 5,228줄로 5,500줄에 
   3. 새 예약 1행 INSERT: `RESERVED`, `slot_id` = 새 슬롯, 같은 `seller_id`·`order_item_id`, `created_at` = 현재.
 - 응답 `200 {"cancelled": 옛 예약의 예약 모양, "reserved": 새 예약의 예약 모양}` **[제안]**(정정 §10.3과 같은 꼴).
 - 그 항목의 살아 있는 예약은 옛 예약 하나뿐이다(부분 UNIQUE). 그래서 §12.3의 "살아 있는 예약이 있으면 409"는 여기서 판정하지 않는다.
-- 잠금 순서(주문 → 예약 → 새 슬롯)와 기존 경로의 대조는 §20.8에 있다. 새 INSERT의 FK 검사(슬롯 KEY SHARE — 이미 쥔 행, 판매자 `users` KEY SHARE, 항목 KEY SHARE)는 예약(§12.3)과 같은 집합·같은 순서다. 그 앞에 잡는 잠금도 예약과 같은 "주문 FU를 먼저" 꼴이다.
+- 잠금 순서(주문 → 예약 → 새 슬롯)와 기존 경로의 대조는 §20.8에 있다. 새 INSERT의 FK 검사(슬롯 KEY SHARE — 이미 잡은 행, 판매자 `users` KEY SHARE, 항목 KEY SHARE)는 예약(§12.3)과 같은 집합·같은 순서다. 그 앞에 잡는 잠금도 예약과 같은 "주문 FU를 먼저" 꼴이다.
 
 #### 20.5.2 상세 조회
 
@@ -665,14 +665,14 @@ ADR-0006 §6.1-7 크기 확인(2026-10-30)에서 god가 5,228줄로 5,500줄에 
 
 FK KEY SHARE 교착(§19의 9-1·9-2·10-1·10-2, god 구현 리뷰 GF-1·4~7)의 교훈은 하나다. **새 경로가 잡는 잠금 + INSERT가 FK로 거는 KEY SHARE**를 기존 규약 셋과 같은 방향으로 맞춘다: "사이즈 → 사용자", "주문 → 항목 → 사용자", "사용자끼리 id 오름차순".
 
-| 새 경로 | 잠금 순서(→ = 쥔 채 다음을 기다림) | 대조한 기존 경로 | 판정 |
+| 새 경로 | 잠금 순서(→ = 잡은 채 다음을 기다림) | 대조한 기존 경로 | 판정 |
 |---|---|---|---|
-| A13 수정 | 주문 FU → 리뷰 FU (UPDATE — FK 검사 없음) | 분쟁 제기·판정(주문 → 항목 FU), 리뷰 작성(주문 FU → 사용자 2명 KS), 삭제·숨김(리뷰 FU만), `rating-recalc`(판매자 리뷰들 FU id 순 → `seller_ratings` 쓰기의 FK로 판매자 `users` KS), `pg-inquiry`·승인 반영(사용자 FU → 주문 쓰기 — `Marketplace.kt:1503` → `approveOrder` `:698`), `price-alert-scan`(알림 FU → 알림 INSERT(IDENTITY라 그 자리에서)의 FK로 `users` KS → 커밋 때 `triggered_bid_id` UPDATE의 FK로 입찰 KS) | 리뷰를 쥔 채 주문을 기다리는 경로가 없다. `rating-recalc`가 판매자 KS를 기다리는 동안 그 판매자 FU를 쥔 쪽(판매자 귀책: 주문 → 항목 → 사용자)은 주문을 먼저 잡았으므로 수정의 주문을 기다리지 않는다. 사용자 FU를 쥔 채 주문을 쓰는 `pg-inquiry`·승인 반영은 대상 주문 상태가 겹치지 않는다(`UNKNOWN`·`PAYING` 주문 vs 수정이 잠그는 주문 = 항목이 `CONFIRMED`인 결제 이후 주문). `price-alert-scan`은 주문·리뷰 행을 잡지 않는다 → 고리 없음 |
+| A13 수정 | 주문 FU → 리뷰 FU (UPDATE — FK 검사 없음) | 분쟁 제기·판정(주문 → 항목 FU), 리뷰 작성(주문 FU → 사용자 2명 KS), 삭제·숨김(리뷰 FU만), `rating-recalc`(판매자 리뷰들 FU id 순 → `seller_ratings` 쓰기의 FK로 판매자 `users` KS), `pg-inquiry`·승인 반영(사용자 FU → 주문 쓰기 — `Marketplace.kt:1503` → `approveOrder` `:698`), `price-alert-scan`(알림 FU → 알림 INSERT(IDENTITY라 그 자리에서)의 FK로 `users` KS → 커밋 때 `triggered_bid_id` UPDATE의 FK로 입찰 KS) | 리뷰를 잡은 채 주문을 기다리는 경로가 없다. `rating-recalc`가 판매자 KS를 기다리는 동안 그 판매자 FU를 잡은 쪽(판매자 귀책: 주문 → 항목 → 사용자)은 주문을 먼저 잡았으므로 수정의 주문을 기다리지 않는다. 사용자 FU를 잡은 채 주문을 쓰는 `pg-inquiry`·승인 반영은 대상 주문 상태가 겹치지 않는다(`UNKNOWN`·`PAYING` 주문 vs 수정이 잠그는 주문 = 항목이 `CONFIRMED`인 결제 이후 주문). `price-alert-scan`은 주문·리뷰 행을 잡지 않는다 → 고리 없음 |
 | A14 변경 | 알림 FU (UPDATE — FK 검사 없음) | 취소(알림 FU), `price-alert-scan`(알림 FU → `notifications` INSERT의 FK로 `users` KS) | 한 행 — 고리 없음 |
-| A14 재등록 | 사이즈 KS → 사용자 FU → INSERT(FK: 사용자·사이즈는 이미 쥠, `triggered_bid_id` NULL) | 입찰 등록(사이즈 FU → INSERT FK `users` KS), `payment-due`(사이즈 FU → 사용자 FU), 등록(§19의 10-2), `price-alert-scan`(알림 FU → 사용자 KS) | 모두 "사이즈 → 사용자" 순서다. 재등록은 알림 행을 잠그지 않으므로 scan과 고리가 없다 → 기준 코드에서 고리 없음. **단, C2 정답 적용 코드**(`experiment/oracle/C2/fix.god.patch`)에서는 판매자 귀책·결제 기한 경고가 제한을 걸 때 사용자 FU를 쥔 채 입찰마다 사이즈 FU를 건다(사용자 → 사이즈). 그 사용자가 알림 주인이면 고리가 생길 수 있다. 위시 등록·가격 알림 등록(§19의 10-2)과 같은 잔여 위험이다(ADR-0005 §9의 13 — C2 잠금) |
+| A14 재등록 | 사이즈 KS → 사용자 FU → INSERT(FK: 사용자·사이즈는 이미 쥠, `triggered_bid_id` NULL) | 입찰 등록(사이즈 FU → INSERT FK `users` KS), `payment-due`(사이즈 FU → 사용자 FU), 등록(§19의 10-2), `price-alert-scan`(알림 FU → 사용자 KS) | 모두 "사이즈 → 사용자" 순서다. 재등록은 알림 행을 잠그지 않으므로 scan과 고리가 없다 → 기준 코드에서 고리 없음. **단, C2 정답 적용 코드**(`experiment/oracle/C2/fix.god.patch`)에서는 판매자 귀책·결제 기한 경고가 제한을 걸 때 사용자 FU를 잡은 채 입찰마다 사이즈 FU를 건다(사용자 → 사이즈). 그 사용자가 알림 주인이면 고리가 생길 수 있다. 위시 등록·가격 알림 등록(§19의 10-2)과 같은 잔여 위험이다(ADR-0005 §9의 13 — C2 잠금) |
 | A14 재무장 | 사이즈 KS → 사용자 FU → INSERT(위와 같음) | 위와 같음 + 위시 등록·삭제(사이즈 KS → 사용자 FU / 사용자 FU) | 재등록과 같다 → 기준 코드에서 고리 없음. C2 정답 적용 코드에서는 재등록과 같은 잔여 위험(판매자 귀책: 사용자 FU → 사이즈 FU, `fix.god.patch` — ADR-0005 §9의 13) |
-| A15 재개 | 문의 FU → 메시지 INSERT(FK: 쥔 문의 행 KS) | 추가 메시지·답변·종결·`inquiry-auto-close`(문의 FU) | 한 행 — 고리 없음 |
-| A16 변경 | 주문 FU → (PAID 판정) → 예약 FU → 새 슬롯 FU → UPDATE·flush → INSERT(FK: 슬롯 KS(쥠) → 판매자 `users` KS → 항목 KS) | 예약 §12.3(주문 FU → 슬롯 FU → 같은 FK), 예약 취소·체크인·`inbound-no-show`(예약 FU만, 슬롯은 읽기), 항목 절차(주문 → 항목 → 사용자 FU), `pg-inquiry`·승인 반영(사용자 FU → 주문 KS·주문 쓰기 — `Marketplace.kt:1503` → `approveOrder` `:698`), `price-alert-scan`(알림 FU → 알림 INSERT(IDENTITY라 그 자리에서)의 FK로 `users` KS → 커밋 때 `triggered_bid_id` UPDATE의 FK로 입찰 KS) | 예약 행을 쥔 채 주문·슬롯을 기다리는 경로가 없다. 슬롯 FU를 잡는 경로(예약·변경)는 모두 주문 FU를 먼저 잡고, PAID 판정을 슬롯·예약 잠금 전에 한다(GF-7). 사용자 FU를 쥔 채 주문을 쓰는 `pg-inquiry`·승인 반영은 대상 주문 상태가 겹치지 않는다(`UNKNOWN`·`PAYING` 주문 vs 변경이 잠그는 주문 = 항목이 `PAID`인 결제 이후 주문). `price-alert-scan`은 주문·예약·슬롯 행을 잡지 않는다. FK KS는 §12.3 예약과 같은 집합·순서다 → 기존과 같은 위험만 있고 새 고리는 없다 |
+| A15 재개 | 문의 FU → 메시지 INSERT(FK: 잡은 문의 행 KS) | 추가 메시지·답변·종결·`inquiry-auto-close`(문의 FU) | 한 행 — 고리 없음 |
+| A16 변경 | 주문 FU → (PAID 판정) → 예약 FU → 새 슬롯 FU → UPDATE·flush → INSERT(FK: 슬롯 KS(쥠) → 판매자 `users` KS → 항목 KS) | 예약 §12.3(주문 FU → 슬롯 FU → 같은 FK), 예약 취소·체크인·`inbound-no-show`(예약 FU만, 슬롯은 읽기), 항목 절차(주문 → 항목 → 사용자 FU), `pg-inquiry`·승인 반영(사용자 FU → 주문 KS·주문 쓰기 — `Marketplace.kt:1503` → `approveOrder` `:698`), `price-alert-scan`(알림 FU → 알림 INSERT(IDENTITY라 그 자리에서)의 FK로 `users` KS → 커밋 때 `triggered_bid_id` UPDATE의 FK로 입찰 KS) | 예약 행을 잡은 채 주문·슬롯을 기다리는 경로가 없다. 슬롯 FU를 잡는 경로(예약·변경)는 모두 주문 FU를 먼저 잡고, PAID 판정을 슬롯·예약 잠금 전에 한다(GF-7). 사용자 FU를 잡은 채 주문을 쓰는 `pg-inquiry`·승인 반영은 대상 주문 상태가 겹치지 않는다(`UNKNOWN`·`PAYING` 주문 vs 변경이 잠그는 주문 = 항목이 `PAID`인 결제 이후 주문). `price-alert-scan`은 주문·예약·슬롯 행을 잡지 않는다. FK KS는 §12.3 예약과 같은 집합·순서다 → 기존과 같은 위험만 있고 새 고리는 없다 |
 | A17 일괄 읽음 | 내 안 읽은 알림 FU id 순 → UPDATE(FK 검사 없음) | 단건 읽음(알림 FU 1행), `notification-purge`(읽은 행 DELETE), `deadline-reminder`·`price-alert-scan`(새 행 INSERT) | 안 읽은 행 집합과 정리 대상(읽은 행)은 겹치지 않는다. 단건은 한 행이라 고리가 없다 |
 | A17 정리 | DELETE 1행(그 행 잠금만) | 단건·일괄 읽음(안 읽은 행만 쓴다) | 고리 없음 |
 
@@ -717,15 +717,15 @@ verify는 상시 검사(행동 테스트 뒤에도 성립해야 함)와 시드 �
 ### 20.12 contract3 테스트 지침 (§18 보완)
 
 - 이 절(+ §2~§19)만 보고 쓴다. 기존 규칙도 그대로다: 직렬 실행, 자기 행만 단언, 픽스처는 테스트가 만든다(`Db3`), 끝에 verify 1회(시드 빌드 전용 검사는 끈 채).
-- **T1 회귀에 묶이지 않게:** A13(수정 기한·쓸 수 있는 항목·`reviewDeadline`)은 §18처럼 확정을 `delivered_at + 7일` 안의 구매자 확정으로 만들거나 `confirmed_at`을 픽스처로 직접 둔다. A14·A15·A16·A17의 기한은 `closed_at`·슬롯·`read_at` 기준이라 T1과 무관하다.
-- **C2 회귀에 묶이지 않게(ADR-0006 §5):**
-  - A14 재무장에서 발동 입찰을 `CANCELLED`·`EXPIRED`로 만들 때 판매 제한을 쓰지 않는다(C2 정답이 그 입찰을 취소한다 — 기대값이 두 코드에서 같아도 경로가 C2 고칠 곳에 묶인다). 입찰 취소(`DELETE /bids/{id}`)나 `bid-expiry`로 만든다. `MATCHED` 입찰은 대상이 아님을 따로 단언한다.
+- **T1 회귀에 의존하지 않게:** A13(수정 기한·쓸 수 있는 항목·`reviewDeadline`)은 §18처럼 확정을 `delivered_at + 7일` 안의 구매자 확정으로 만들거나 `confirmed_at`을 픽스처로 직접 둔다. A14·A15·A16·A17의 기한은 `closed_at`·슬롯·`read_at` 기준이라 T1과 무관하다.
+- **C2 회귀에 의존하지 않게(ADR-0006 §5):**
+  - A14 재무장에서 발동 입찰을 `CANCELLED`·`EXPIRED`로 만들 때 판매 제한을 쓰지 않는다(C2 정답이 그 입찰을 취소한다 — 기대값이 두 코드에서 같아도 경로가 C2 고칠 곳에 의존한다). 입찰 취소(`DELETE /bids/{id}`)나 `bid-expiry`로 만든다. `MATCHED` 입찰은 대상이 아님을 따로 단언한다.
   - 구매 제한 건너뜀 테스트는 `purchase_restricted_until`을 픽스처로 직접 두고, 그 사용자에게 `ACTIVE` 입찰을 두지 않는다.
 - **A17 재생성 없음 테스트:** 알림은 실제 배치(`deadline-reminder`)로 만든다. 읽음 → 시계 이동(≥ 30일) → `notification-purge` → `deadline-reminder` 순서로 돌려 같은 `dedupe_key`가 다시 생기지 않는지 본다.
   - 쓸 종류는 **`PAYMENT_DUE_SOON`·`SETTLEMENT_PAID`**로 정한다(둘 다 T1·C2 고칠 곳과 무관한 저장 열 — `payment_due_at`·정산 `paid_at`).
-  - `DISPUTE_WINDOW_CLOSING`은 쓰지 않는다. `confirmed_at`에 기대므로 T1 회귀에 묶인다(§18 — 써야 하면 `confirmed_at`을 픽스처로 직접 둔다).
+  - `DISPUTE_WINDOW_CLOSING`은 쓰지 않는다. `confirmed_at`에 기대므로 T1 회귀에 의존한다(§18 — 써야 하면 `confirmed_at`을 픽스처로 직접 둔다).
   - `PURCHASE_/SALE_RESTRICTED`도 쓰지 않는다. 제한을 배치로 걸면 C2 정답이 그 사용자의 ACTIVE 입찰을 취소하므로 C2 픽스처 규칙(ADR-0006 §5 — 제한 + ACTIVE 입찰 조합 피하기)에 걸린다. 써야 하면 제한 끝을 픽스처로 직접 두고(계약 안의 값: 건 시각 + 7일·30일) 그 사용자에게 ACTIVE 입찰을 두지 않는다.
-  - §18 규칙을 다시 적는다: T1에 묶이지 않게 `confirmed_at`은 구매자 확정(`delivered_at + 7일` 안)이나 픽스처로 만들고, C2에 묶이지 않게 제한된 사용자 + ACTIVE 입찰 조합을 만들지 않는다.
+  - §18 규칙을 다시 적는다: T1에 의존하지 않게 `confirmed_at`은 구매자 확정(`delivered_at + 7일` 안)이나 픽스처로 만들고, C2에 의존하지 않게 제한된 사용자 + ACTIVE 입찰 조합을 만들지 않는다.
 - **동시성(§19의 10-2 테스트 꼴):** 아래 세 쌍이 교착 없이 각각 계약대로 응답하는지 본다.
   - A16 변경과 같은 슬롯의 예약(정원 1)
   - A14 재무장·재등록과 같은 사이즈의 입찰 등록
