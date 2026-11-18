@@ -139,7 +139,7 @@
 ### 5.1 등급 규칙 **[제안]**
 
 - 기준월 `D` = 현재 시각이 속한 달의 1일(KST). 기준 금액 = 그 판매자의 `settlement_items` 중 `INCLUDED`의 `amount` 합, 소속 정산의 `period_start`가 `[D − 3개월, D)`인 것.
-- 등급(기준 금액): **MASTER ≥ 8,000,000 · PRO ≥ 3,000,000 · PLUS ≥ 1,000,000 · 그 밖 STANDARD**. 구매자 등급(`users.grade`, ADR-0004 §8.5)과 이름·문턱·기간을 다르게 둔다 **[불변식 7 — C1]**. 불변식 7의 C1 항목은 **기존 구매자 등급 경계·적립률의 재구현 금지**로 해석한다 — 판매자 등급이라는 새 규칙 자체는 ADR-0006 §4.1 A2로 채택된 기능이다.
+- 등급(기준 금액): **MASTER ≥ 8,000,000 · PRO ≥ 3,000,000 · PLUS ≥ 1,000,000 · 그 밖 STANDARD**. 구매자 등급(`users.grade`, ADR-0004 §8.5)과 이름·기준값·기간을 다르게 둔다 **[불변식 7 — C1]**. 불변식 7의 C1 항목은 **기존 구매자 등급 경계·적립률의 재구현 금지**로 해석한다 — 판매자 등급이라는 새 규칙 자체는 ADR-0006 §4.1 A2로 채택된 기능이다.
 - **판매 제한:** 산정 시 `users.sale_restricted_until > 현재`이면 `restricted = true`, 등급은 기준 금액과 무관하게 `STANDARD`. 저장된 값만 읽는다 — 제한 조건(패널티 수)을 다시 세지 않는다 **[불변식 7 — T2]**.
 
 ### 5.2 배치 `seller-grade-recalc`
@@ -191,9 +191,9 @@
 
 ### 7.1 배치 `deadline-reminder`
 
-여섯 종류를 아래 표의 **행 순서대로** 하나씩 끝까지 훑는다(종류마다 그 표의 id 순 — 예: 구매 제한 사용자를 모두 훑은 뒤 판매 제한). 대상 1건 = 알림 1행 INSERT. 조건에 `NOT EXISTS (같은 dedupe_key)`가 들어 있어 재실행은 새 대상만 만든다.
+여섯 종류를 아래 표의 **행 순서대로** 하나씩 끝까지 스캔한다(종류마다 그 표의 id 순 — 예: 구매 제한 사용자를 모두 스캔한 뒤 판매 제한). 대상 1건 = 알림 1행 INSERT. 조건에 `NOT EXISTS (같은 dedupe_key)`가 들어 있어 재실행은 새 대상만 만든다.
 
-| kind | 훑는 표 · 조건 (현재 = `now`) | 받는 사람 | `ref_id` · `dedupe_key` |
+| kind | 스캔하는 표 · 조건 (현재 = `now`) | 받는 사람 | `ref_id` · `dedupe_key` |
 |---|---|---|---|
 | `PAYMENT_DUE_SOON` | `trades`: `AWAITING_PAYMENT`, `now < payment_due_at ≤ now + 10분` **[제안]** | 구매자 | 체결 id · `PAYMENT_DUE_SOON:<id>` |
 | `SHIPMENT_DUE_SOON` | `order_items`: `PAID`, `paid_at + 2일 ≤ now < paid_at + 3일` **[제안]** | 판매자 | 항목 id · `SHIPMENT_DUE_SOON:<id>` |
@@ -405,7 +405,7 @@
 - 새 검사(`v_result`의 `;` 앞에 `UNION ALL`, 이름 `a<N>_…`) **[제안]**:
   - 공통 `a0_partial_unique_present`(새 부분 UNIQUE 4개 `payout_account_requests_live_user_key`·`price_alerts_live_user_size_key`·`tax_invoices_live_settlement_key`·`inbound_reservations_live_item_key`가 있는가) · `a0_time_order`(새 테이블의 시각 순서: `decided_at ≥ requested_at`, `read_at ≥ created_at`, `closed_at ≥ created_at`(문의·가격 알림·예약), `received_at ≥ occurred_at`, 리뷰 `created_at ≥` 항목 `confirmed_at`).
   - A1 `a1_review_item_confirmed`(VISIBLE 리뷰 항목이 CONFIRMED — 분쟁 뒤 배치 전에는 깨지므로 시드 빌드에서만) · `a1_review_window`(`created_at ≤ confirmed_at + 30일`) · `a1_review_parties`(buyer·seller = 체결 당사자) · `a1_rating_cache`(`seller_ratings` = VISIBLE 집계 — 시드 시점 한정, 테스트 뒤에는 배치 전이라 다를 수 있어 **시드 빌드에서만** 판정 — §15 끝).
-  - A2 `a2_seller_grade_rule`(**저장 열끼리**: `restricted`면 STANDARD, 아니면 `basis_amount`의 문턱 등급) · `a2_rebate_rule`(저장 열끼리: `rate_permille` = 등급의 율, `amount = floor(max(fee_base, 0) × rate / 1000)`, status·paid_at). 기준 금액·`fee_base`를 정산에서 다시 집계하는 대조는 테스트가 정산을 더 만들면 깨지므로 **시드 빌드에서만**(`a2_seller_grade_basis`·`a2_rebate_base`).
+  - A2 `a2_seller_grade_rule`(**저장 열끼리**: `restricted`면 STANDARD, 아니면 `basis_amount`의 기준값 등급) · `a2_rebate_rule`(저장 열끼리: `rate_permille` = 등급의 율, `amount = floor(max(fee_base, 0) × rate / 1000)`, status·paid_at). 기준 금액·`fee_base`를 정산에서 다시 집계하는 대조는 테스트가 정산을 더 만들면 깨지므로 **시드 빌드에서만**(`a2_seller_grade_basis`·`a2_rebate_base`).
   - A3 `a3_statement_sums`(정산서 = 그 달 정산 합).
   - A4 `a4_notification_owner`(받는 사람 = 대상의 당사자).
   - A5 `a5_alert_trigger_bid`(TRIGGERED 입찰이 같은 사이즈 SELL·`price ≤ target`).
@@ -600,7 +600,7 @@ ADR-0006 §6.1-7 크기 확인(2026-10-30)에서 god가 5,228줄로 5,500줄에 
   3. 새 예약 1행 INSERT: `RESERVED`, `slot_id` = 새 슬롯, 같은 `seller_id`·`order_item_id`, `created_at` = 현재.
 - 응답 `200 {"cancelled": 옛 예약의 예약 모양, "reserved": 새 예약의 예약 모양}` **[제안]**(정정 §10.3과 같은 꼴).
 - 그 항목의 살아 있는 예약은 옛 예약 하나뿐이다(부분 UNIQUE). 그래서 §12.3의 "살아 있는 예약이 있으면 409"는 여기서 판정하지 않는다.
-- 잠금 순서(주문 → 예약 → 새 슬롯)와 기존 경로의 대조는 §20.8에 있다. 새 INSERT의 FK 검사(슬롯 KEY SHARE — 이미 쥔 행, 판매자 `users` KEY SHARE, 항목 KEY SHARE)는 예약(§12.3)과 같은 집합·같은 순서다. 그 앞에 쥐는 잠금도 예약과 같은 "주문 FU를 먼저" 꼴이다.
+- 잠금 순서(주문 → 예약 → 새 슬롯)와 기존 경로의 대조는 §20.8에 있다. 새 INSERT의 FK 검사(슬롯 KEY SHARE — 이미 쥔 행, 판매자 `users` KEY SHARE, 항목 KEY SHARE)는 예약(§12.3)과 같은 집합·같은 순서다. 그 앞에 잡는 잠금도 예약과 같은 "주문 FU를 먼저" 꼴이다.
 
 #### 20.5.2 상세 조회
 
@@ -663,7 +663,7 @@ ADR-0006 §6.1-7 크기 확인(2026-10-30)에서 god가 5,228줄로 5,500줄에 
 
 ### 20.8 잠금 순서 대조 (스스로 점검)
 
-FK KEY SHARE 교착(§19의 9-1·9-2·10-1·10-2, god 구현 리뷰 GF-1·4~7)의 교훈은 하나다. **새 경로가 쥐는 잠금 + INSERT가 FK로 거는 KEY SHARE**를 기존 규약 셋과 같은 방향으로 맞춘다: "사이즈 → 사용자", "주문 → 항목 → 사용자", "사용자끼리 id 오름차순".
+FK KEY SHARE 교착(§19의 9-1·9-2·10-1·10-2, god 구현 리뷰 GF-1·4~7)의 교훈은 하나다. **새 경로가 잡는 잠금 + INSERT가 FK로 거는 KEY SHARE**를 기존 규약 셋과 같은 방향으로 맞춘다: "사이즈 → 사용자", "주문 → 항목 → 사용자", "사용자끼리 id 오름차순".
 
 | 새 경로 | 잠금 순서(→ = 쥔 채 다음을 기다림) | 대조한 기존 경로 | 판정 |
 |---|---|---|---|
@@ -672,7 +672,7 @@ FK KEY SHARE 교착(§19의 9-1·9-2·10-1·10-2, god 구현 리뷰 GF-1·4~7)�
 | A14 재등록 | 사이즈 KS → 사용자 FU → INSERT(FK: 사용자·사이즈는 이미 쥠, `triggered_bid_id` NULL) | 입찰 등록(사이즈 FU → INSERT FK `users` KS), `payment-due`(사이즈 FU → 사용자 FU), 등록(§19의 10-2), `price-alert-scan`(알림 FU → 사용자 KS) | 모두 "사이즈 → 사용자" 순서다. 재등록은 알림 행을 잠그지 않으므로 scan과 고리가 없다 → 기준 코드에서 고리 없음. **단, C2 정답 적용 코드**(`experiment/oracle/C2/fix.god.patch`)에서는 판매자 귀책·결제 기한 경고가 제한을 걸 때 사용자 FU를 쥔 채 입찰마다 사이즈 FU를 건다(사용자 → 사이즈). 그 사용자가 알림 주인이면 고리가 생길 수 있다. 위시 등록·가격 알림 등록(§19의 10-2)과 같은 잔여 위험이다(ADR-0005 §9의 13 — C2 잠금) |
 | A14 재무장 | 사이즈 KS → 사용자 FU → INSERT(위와 같음) | 위와 같음 + 위시 등록·삭제(사이즈 KS → 사용자 FU / 사용자 FU) | 재등록과 같다 → 기준 코드에서 고리 없음. C2 정답 적용 코드에서는 재등록과 같은 잔여 위험(판매자 귀책: 사용자 FU → 사이즈 FU, `fix.god.patch` — ADR-0005 §9의 13) |
 | A15 재개 | 문의 FU → 메시지 INSERT(FK: 쥔 문의 행 KS) | 추가 메시지·답변·종결·`inquiry-auto-close`(문의 FU) | 한 행 — 고리 없음 |
-| A16 변경 | 주문 FU → (PAID 판정) → 예약 FU → 새 슬롯 FU → UPDATE·flush → INSERT(FK: 슬롯 KS(쥠) → 판매자 `users` KS → 항목 KS) | 예약 §12.3(주문 FU → 슬롯 FU → 같은 FK), 예약 취소·체크인·`inbound-no-show`(예약 FU만, 슬롯은 읽기), 항목 절차(주문 → 항목 → 사용자 FU), `pg-inquiry`·승인 반영(사용자 FU → 주문 KS·주문 쓰기 — `Marketplace.kt:1503` → `approveOrder` `:698`), `price-alert-scan`(알림 FU → 알림 INSERT(IDENTITY라 그 자리에서)의 FK로 `users` KS → 커밋 때 `triggered_bid_id` UPDATE의 FK로 입찰 KS) | 예약 행을 쥔 채 주문·슬롯을 기다리는 경로가 없다. 슬롯 FU를 쥐는 경로(예약·변경)는 모두 주문 FU를 먼저 쥐고, PAID 판정을 슬롯·예약 잠금 전에 한다(GF-7). 사용자 FU를 쥔 채 주문을 쓰는 `pg-inquiry`·승인 반영은 대상 주문 상태가 겹치지 않는다(`UNKNOWN`·`PAYING` 주문 vs 변경이 잠그는 주문 = 항목이 `PAID`인 결제 이후 주문). `price-alert-scan`은 주문·예약·슬롯 행을 잡지 않는다. FK KS는 §12.3 예약과 같은 집합·순서다 → 기존과 같은 위험만 있고 새 고리는 없다 |
+| A16 변경 | 주문 FU → (PAID 판정) → 예약 FU → 새 슬롯 FU → UPDATE·flush → INSERT(FK: 슬롯 KS(쥠) → 판매자 `users` KS → 항목 KS) | 예약 §12.3(주문 FU → 슬롯 FU → 같은 FK), 예약 취소·체크인·`inbound-no-show`(예약 FU만, 슬롯은 읽기), 항목 절차(주문 → 항목 → 사용자 FU), `pg-inquiry`·승인 반영(사용자 FU → 주문 KS·주문 쓰기 — `Marketplace.kt:1503` → `approveOrder` `:698`), `price-alert-scan`(알림 FU → 알림 INSERT(IDENTITY라 그 자리에서)의 FK로 `users` KS → 커밋 때 `triggered_bid_id` UPDATE의 FK로 입찰 KS) | 예약 행을 쥔 채 주문·슬롯을 기다리는 경로가 없다. 슬롯 FU를 잡는 경로(예약·변경)는 모두 주문 FU를 먼저 잡고, PAID 판정을 슬롯·예약 잠금 전에 한다(GF-7). 사용자 FU를 쥔 채 주문을 쓰는 `pg-inquiry`·승인 반영은 대상 주문 상태가 겹치지 않는다(`UNKNOWN`·`PAYING` 주문 vs 변경이 잠그는 주문 = 항목이 `PAID`인 결제 이후 주문). `price-alert-scan`은 주문·예약·슬롯 행을 잡지 않는다. FK KS는 §12.3 예약과 같은 집합·순서다 → 기존과 같은 위험만 있고 새 고리는 없다 |
 | A17 일괄 읽음 | 내 안 읽은 알림 FU id 순 → UPDATE(FK 검사 없음) | 단건 읽음(알림 FU 1행), `notification-purge`(읽은 행 DELETE), `deadline-reminder`·`price-alert-scan`(새 행 INSERT) | 안 읽은 행 집합과 정리 대상(읽은 행)은 겹치지 않는다. 단건은 한 행이라 고리가 없다 |
 | A17 정리 | DELETE 1행(그 행 잠금만) | 단건·일괄 읽음(안 읽은 행만 쓴다) | 고리 없음 |
 
@@ -694,9 +694,9 @@ verify는 상시 검사(행동 테스트 뒤에도 성립해야 함)와 시드 �
 - FK 수 61·부분 UNIQUE 4개·`schema_constraints_present`는 그대로다.
 - 새 verify 검사는 두지 않는다 **[제안]**. 새 테이블·열이 없어 새로 묶을 행 간 규칙이 없다. 수정·재개·변경 이력은 행에 남지 않아(예: VISIBLE 리뷰의 `updated_at`은 `rating-recalc`의 숨김 해제로도 바뀐다) 상시 검사로 판정할 수 없다. 시드 전용 검사를 더해도 이미지를 다시 빌드할 때만 돈다(§20.11).
 
-### 20.10 본보기 배제 (ADR-0006 §3의 7 — 스스로 점검)
+### 20.10 예시 배제 (ADR-0006 §3의 7 — 스스로 점검)
 
-| 본보기 | 이 묶음에서 닮을 수 있는 곳 | 판정 |
+| 예시 | 이 묶음에서 닮을 수 있는 곳 | 판정 |
 |---|---|---|
 | C2 — 제한·제재 때 입찰 일괄 취소 | A14 재무장의 구매 제한 판정 | 저장된 `purchase_restricted_until`을 읽고 **건너뛰기만** 한다. 입찰·알림을 취소하지 않는다. 제한 때 알림·예약을 일괄 취소하는 기능은 후보에서 뺐다(log 05:45) |
 | T1 — 기준 시각 + 기간으로 저장 시각 소급·상한(`min(현재, 기준 + N일)`) | A13 `reviewDeadline`(`confirmed_at + 30일`), A14 재등록·재무장 `expires_at`, A15·A16·A17 저장 시각 | 저장 시각은 모두 **현재**다(`updated_at`·`created_at`·`closed_at`·`read_at`). `expires_at = 현재 + 60일`은 등록과 같은 모양이고 `closed_at`·`expires_at`에 기간을 더하거나 `min`으로 자르지 않는다. `reviewDeadline`은 저장하지 않는 표시 값이고 판정은 비교(`현재 > 기준 + 30일`)만 한다(§2.4가 허용한 기한 판정). 기간 경계는 앱이 `:due = 현재 − N`으로 계산해 비교에만 쓴다 |
